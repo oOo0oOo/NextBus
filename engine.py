@@ -1,5 +1,3 @@
-#http://transport.opendata.ch/v1/stationboard?station=
-#station: Aarau
 import json
 import urllib
 from dateutil.parser import parse
