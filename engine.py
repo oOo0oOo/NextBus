@@ -112,5 +112,9 @@ if __name__=='__main__':
 
     api = ZVVTimeTable()
     next_connection = ConnectionTracker(api, station, targets)
+
+    # You can check connection in irregular intervals (according to bus frequency...)
     next_connection.check_all()
+    # .get_next() uses off-line countdown & does not initiate api calls.
     print 'Evacuate Hoenggerberg!\nNext connection:', next_connection.get_next()
+
