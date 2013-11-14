@@ -15,7 +15,9 @@ class ZVVTimeTable:
         self.base_url = 'http://online.fahrplan.zvv.ch//bin/stboard.exe/dn?L=vs_widgets&{}&additionalTime=0&maxJourneys=1&start=yes&requestType=0'
 
     def get_next_connection(self, station, direction):
-        '''direction has to be an end station.'''
+        '''
+            Direction has to be a line end station.
+        '''
 
         # Fix up url
         params = {'input': station, 'dirInput': direction}
@@ -63,12 +65,18 @@ class SBBTimeTable:
 
 
 class MinuteCountdown:
-    '''A simple countdown lazy minute countdown'''
+    '''
+        A simple countdown lazy minute countdown
+    '''
     def __init__(self, minutes):
         self.start_val = minutes
         self.started = time.time()
 
     def get_value(self):
+        '''
+            Calculate current value from time passed.
+            If run out countdown will stay at 0 indefinitely.
+        '''
         minutes_passed = int(ceil((time.time() - self.started)/60))
         val = self.start_val - minutes_passed
         if val<0: val=0
@@ -76,7 +84,9 @@ class MinuteCountdown:
 
 
 class ConnectionTracker:
-    '''Can check multiple directions, stores next connection as a off-line updated countdown.'''
+    '''
+        Can check multiple directions, stores next connection as a off-line updated countdown.
+    '''
 
     def __init__(self, api, station, targets):
         self.api = api
@@ -88,6 +98,10 @@ class ConnectionTracker:
         self.current_msg = False
 
     def check_all(self):
+        '''
+            Finds the next connection using the provided api.
+        '''
+
         # iterate over connections, find minimal time
         min_con = (False, 1000)
         for t in self.targets:
@@ -100,6 +114,10 @@ class ConnectionTracker:
         self.line = min_con[0]
 
     def get_next(self):
+        '''
+            Does not initiate api call, uses off-line countdown instead.
+        '''
+
         if self.countdown:
             return '{} in {} minutes'.format(self.line, self.countdown.get_value())
         else:
@@ -113,7 +131,7 @@ if __name__=='__main__':
     api = ZVVTimeTable()
     next_connection = ConnectionTracker(api, station, targets)
 
-    # You can check connection in irregular intervals (according to bus frequency...)
+    # You can check connections in irregular intervals (according to bus frequency...)
     next_connection.check_all()
     # .get_next() uses off-line countdown & does not initiate api calls.
     print 'Evacuate Hoenggerberg!\nNext connection:', next_connection.get_next()
