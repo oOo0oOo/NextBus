@@ -12,8 +12,6 @@ from math import ceil
 
 class ZVVTimeTable:
     def __init__(self):
-        params = {'input': 'Zuerich, Regensbergbruecke', 'dirInput': 'Zuerich, Schwammendingerplatz'}
-
         self.base_url = 'http://online.fahrplan.zvv.ch//bin/stboard.exe/dn?L=vs_widgets&{}&additionalTime=0&maxJourneys=1&start=yes&requestType=0'
 
     def get_next_connection(self, station, direction):
@@ -52,30 +50,15 @@ class SBBTimeTable:
         if con['sections'][0]['journey']:
             line = con['sections'][0]['journey']['name'].rstrip()
         else:
-            line = False
+            line = ''
 
         # Calculate how much time there is left until departure (in seconds)
         departure = parse(con['from']['departure']).replace(tzinfo=None)
         time_left = departure - datetime.now().replace(tzinfo=None)
         time_left = int(time_left.total_seconds())
 
-        # Check if a prognosed time was sent (has not happened so far)
-        prognosed = con['from']['prognosis']['departure']
-        if prognosed:
-            print 'Prognosed departure', prognosed
-
         # Return a nice message
-        seconds = time_left % 60
-        minutes = abs((time_left - seconds) / 60)
-
-        if not line:
-            line = ''
-
-        if time_left > 0:
-            msg = '{} in {} min {} s'.format(line, minutes, seconds)
-        else:
-            msg = '{}: Run it\'s LATE!'.format(line)
-
+        minutes = int(round(abs(time_left)/ 60))
         return line, minutes
 
 
@@ -93,7 +76,7 @@ class MinuteCountdown:
 
 
 class ConnectionTracker:
-    '''Can check connections to different targets'''
+    '''Can check multiple directions, stores next connection as a off-line updated countdown.'''
 
     def __init__(self, api, station, targets):
         self.api = api
@@ -124,13 +107,10 @@ class ConnectionTracker:
 
 
 if __name__=='__main__':
-    station = 'Zuerich, Regensbergbruecke'
-    targets = ['Zuerich, Unteraffoltern', 'Zuerich, Muehlacker']
+    station = 'Zuerich, ETH Hoenggerberg'
+    targets = ['Zuerich, Bucheggplatz', 'Zuerich, Triemlispital', 'Zuerich, Oerlikon Nord']
 
     api = ZVVTimeTable()
     next_connection = ConnectionTracker(api, station, targets)
-
-    while True:
-        next_connection.check_all()
-        print next_connection.get_next()
-        time.sleep(20)
+    next_connection.check_all()
+    print 'Evacuate Hoenggerberg!\nNext connection:', next_connection.get_next()
