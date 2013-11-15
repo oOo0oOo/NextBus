@@ -1,72 +1,13 @@
 import json
 import urllib
-from dateutil.parser import parse
-from datetime import datetime
+from urllib import urlencode
 import time
 from math import ceil
-
-###
-# The interfaces for the ZVV and SBB API
-###
-
-
-class ZVVTimeTable:
-    def __init__(self):
-        self.base_url = 'http://online.fahrplan.zvv.ch//bin/stboard.exe/dn?L=vs_widgets&{}&additionalTime=0&maxJourneys=1&start=yes&requestType=0'
-
-    def get_next_connection(self, station, direction):
-        '''
-            Direction has to be a line end station.
-        '''
-
-        # Fix up url
-        params = {'input': station, 'dirInput': direction}
-        url = self.base_url.format(urllib.urlencode(params))
-
-        # Get data and modify
-        timetableData = urllib.urlopen(url)
-        timetableDataString = timetableData.read().decode(encoding='UTF-8')
-        timetableDataStringTrunc = timetableDataString[14:]
-
-        data = json.loads(timetableDataStringTrunc)
-        journey = data[u'journey'][0]
-
-        return journey[u'pr'], int(journey[u'countdown_val'])
-
-
-class SBBTimeTable:
-    def __init__(self):
-        self.base_url = 'http://transport.opendata.ch/v1/'
-
-    def _get_remote_data(self, url, params = {}):
-        request_url = self.base_url + url + '?' + urllib.urlencode(params)
-        return json.load(urllib.urlopen(request_url))
-
-    def get_next_connection(self, origin, target):
-        # Get the data
-        connections = self._get_remote_data('connections', {'from': origin, 'to': target})
-        # Select the first (next) connection
-        con = connections['connections'][0]
-
-        # Find the (bus) line name
-        if con['sections'][0]['journey']:
-            line = con['sections'][0]['journey']['name'].rstrip()
-        else:
-            line = ''
-
-        # Calculate how much time there is left until departure (in seconds)
-        departure = parse(con['from']['departure']).replace(tzinfo=None)
-        time_left = departure - datetime.now().replace(tzinfo=None)
-        time_left = int(time_left.total_seconds())
-
-        # Return a nice message
-        minutes = int(round(abs(time_left)/ 60))
-        return line, minutes
 
 
 class MinuteCountdown:
     '''
-        A simple countdown lazy minute countdown
+        A simple, lazy countdown in minutes.
     '''
     def __init__(self, minutes):
         self.start_val = minutes
@@ -83,56 +24,68 @@ class MinuteCountdown:
         return val
 
 
-class ConnectionTracker:
-    '''
-        Can check multiple directions, stores next connection as a off-line updated countdown.
-    '''
+class Journey(MinuteCountdown):
+    def __init__(self, params):
+        self.params = params
 
-    def __init__(self, api, station, targets):
-        self.api = api
+        # Line name and target
+        self.line = params['pr'].replace(' ', '')
+
+        # pprint a bit
+        t = repr(params['st'])[2:-1]
+        t = t.replace('\\xfc', 'ue')
+        t = t.replace('\\xf6', 'oe')
+        t = t.replace('\\xe4', 'ae')
+        self.target = t
+
+        MinuteCountdown.__init__(self, int(self.params['countdown_val']))
+
+    def __str__(self):
+        p = self.params
+        pl = 's'
+        if self.get_value() == 1:
+            pl = ''
+
+        return '{} to {} in {} minute{}'.format(self.line, self.target, self.get_value(), pl)
+
+
+class ZVVStationBoard:
+    def __init__(self, station, num_journeys = 15, params = {}):
+        std_params = {'L': 'vs_widgets', 'maxJourneys': str(num_journeys), 'start': 'no',
+            'requestType': '0', 'input': station}
+        std_params.update(params)
         self.station = station
-        self.targets = targets
 
-        # Set up countdown container
-        self.countdown = False
-        self.current_msg = False
+        self.url = 'http://online.fahrplan.zvv.ch//bin/stboard.exe/dn?' + urlencode(std_params)
+        self.board = []
+        self.update_board()
 
-    def check_all(self):
-        '''
-            Finds the next connection using the provided api.
-        '''
+    def update_board(self):
+        # Get the data, fix it
+        timetableData = urllib.urlopen(self.url)
+        timetableDataString = timetableData.read().decode(encoding='UTF-8')
+        timetableDataStringTrunc = timetableDataString[14:]
 
-        # iterate over connections, find minimal time
-        min_con = (False, 1000)
-        for t in self.targets:
-            con = self.api.get_next_connection(self.station, t)
-            if con[1] < min_con[1]:
-                min_con = con
+        # Load all the journeys as the new board
+        data = json.loads(timetableDataStringTrunc)
+        del self.board
+        self.board = []
+        for j in data['journey']:
+            self.board.append(Journey(j))
 
-        # Set up the Countdown
-        self.countdown = MinuteCountdown(min_con[1])
-        self.line = min_con[0]
+    def get_board(self):
+        title = 'Connections from ' + self.station + ':'
+        return '\n'.join([title] + [str(j) for j in self.board])
 
-    def get_next(self):
-        '''
-            Does not initiate api call, uses off-line countdown instead.
-        '''
-
-        if self.countdown:
-            return '{} in {} minutes'.format(self.line, self.countdown.get_value())
-        else:
-            return 'No Data Yet...'
+    def get_next_connection(self, targets):
+        cons = []
+        for jo in self.board:
+            pass
 
 
 if __name__=='__main__':
-    station = 'Zuerich, ETH Hoenggerberg'
-    targets = ['Zuerich, Bucheggplatz', 'Zuerich, Triemlispital', 'Zuerich, Oerlikon Nord']
+    station = 'Zuerich, berninaplatz'
+    targets = ['Zuerich, Muehlacker', 'Zuerich, Neuaffoltern']
 
-    api = ZVVTimeTable()
-    next_connection = ConnectionTracker(api, station, targets)
-
-    # You can check connections in irregular intervals (according to bus frequency...)
-    next_connection.check_all()
-    # .get_next() uses off-line countdown & does not initiate api calls.
-    print 'Evacuate Hoenggerberg!\nNext connection:', next_connection.get_next()
-
+    board = ZVVStationBoard(station, 10)
+    print board.get_board()
