@@ -2,8 +2,6 @@ import json
 import urllib
 from urllib import urlencode
 import time
-from math import ceil
-
 
 class MinuteCountdown:
     '''
@@ -16,11 +14,9 @@ class MinuteCountdown:
     def get_value(self):
         '''
             Calculate current value from time passed.
-            If run out countdown will stay at 0 indefinitely.
         '''
-        minutes_passed = int(ceil((time.time() - self.started)/60))
+        minutes_passed = int(round((time.time() - self.started)/60))
         val = self.start_val - minutes_passed
-        if val<0: val=0
         return val
 
 
@@ -51,41 +47,78 @@ class Journey(MinuteCountdown):
 
 class ZVVStationBoard:
     def __init__(self, station, num_journeys = 15, params = {}):
-        std_params = {'L': 'vs_widgets', 'maxJourneys': str(num_journeys), 'start': 'no',
+        std_params = {'L': 'vs_widgets', 'maxJourneys': str(num_journeys), 'start': 'yes',
             'requestType': '0', 'input': station}
         std_params.update(params)
         self.station = station
 
         self.url = 'http://online.fahrplan.zvv.ch//bin/stboard.exe/dn?' + urlencode(std_params)
+
         self.board = []
         self.update_board()
 
     def update_board(self):
         # Get the data, fix it
         timetableData = urllib.urlopen(self.url)
-        timetableDataString = timetableData.read().decode(encoding='UTF-8')
+        try:
+            timetableDataString = timetableData.read().decode(encoding='UTF-8')
+        except UnicodeDecodeError:
+            print 'Did not receive expected json data from api. (DecodeError)'
+            return
+
         timetableDataStringTrunc = timetableDataString[14:]
 
         # Load all the journeys as the new board
         data = json.loads(timetableDataStringTrunc)
         del self.board
         self.board = []
-        for j in data['journey']:
-            self.board.append(Journey(j))
+
+        try:
+            for j in data['journey']:
+                self.board.append(Journey(j))
+        except KeyError:
+            print 'Did not receive expected json data from api.'
+            return
 
     def get_board(self):
         title = 'Connections from ' + self.station + ':'
         return '\n'.join([title] + [str(j) for j in self.board])
 
-    def get_next_connection(self, targets):
-        cons = []
-        for jo in self.board:
-            pass
+    def remove_passed_journeys(self):
+        threshold = 0
+        ind = [i for i,j in enumerate(self.board) if j.get_value() < threshold]
+        [self.board.pop(i) for i in reversed(ind)]
 
+    def get_next_journey(self, targets):
+        self.remove_passed_journeys()
+
+        # Get all possible connections
+        for j in self.board:
+            if j.target in targets:
+                return j
 
 if __name__=='__main__':
-    station = 'Zuerich, berninaplatz'
-    targets = ['Zuerich, Muehlacker', 'Zuerich, Neuaffoltern']
+    station = 'Zuerich, Kunsthaus'
+    fritz = ['Zuerich, Albisrieden', 'Schlieren, Zentrum']
+    hans = ['Zuerich, Klusplatz']
 
-    board = ZVVStationBoard(station, 10)
-    print board.get_board()
+    board = ZVVStationBoard(station, 20)
+
+    print 'Fritz:', board.get_next_journey(fritz)
+    print 'Hans:', board.get_next_journey(hans)
+
+    '''
+    i = 0
+    while True:
+        i += 1
+        # Update board every 120 seconds
+        if not i%12:
+            board.update_board()
+
+        # Print next connections every 10 seconds
+        print '\nFritz:', board.get_next_journey(fritz)
+        print 'Hans:', board.get_next_journey(hans)
+        time.sleep(10)
+    '''
+
+
